@@ -335,6 +335,81 @@ export class WorkspaceCommandHandler {
     }
 
     /**
+     * /project reopen -- Reopen the project in the configured account
+     */
+    public async handleReopen(
+        interaction: ChatInputCommandInteraction,
+        guild: Guild,
+        bridge: any,
+        antigravityAccounts: any[],
+    ): Promise<void> {
+        const channelId = interaction.channelId;
+        const workspacePath = this.getWorkspaceForChannel(channelId);
+
+        if (!workspacePath) {
+            await interaction.editReply({
+                content: t('⚠️ No project is bound to this channel. Use `/project` first.'),
+            });
+            return;
+        }
+
+        const resolveSelectedAccount = (await import('../utils/accountUtils')).resolveScopedAccountName;
+        const selectedAccount = resolveSelectedAccount({
+            channelId,
+            userId: interaction.user.id,
+            selectedAccountByChannel: bridge.selectedAccountByChannel,
+            accounts: antigravityAccounts,
+        });
+
+        const accountPorts = Object.fromEntries(
+            antigravityAccounts.map((account) => [account.name, account.cdpPort]),
+        );
+        const accountUserDataDirs = Object.fromEntries(
+            antigravityAccounts
+                .filter((account) => typeof account.userDataDir === 'string' && account.userDataDir.trim().length > 0)
+                .map((account) => [account.name, account.userDataDir!.trim()]),
+        );
+
+        const port = accountPorts[selectedAccount] ?? null;
+        const projectName = bridge.pool.extractProjectName(workspacePath);
+
+        logger.info(
+            `[ProjectReopenCommand:Discord] channel=${channelId} user=${interaction.user.id} ` +
+            `project=${projectName} account=${selectedAccount} ` +
+            `port=${port ?? 'unknown'} workspacePath=${workspacePath}`,
+        );
+
+        try {
+            const { CdpService } = await import('../services/cdpService');
+            const cdp = new CdpService({
+                accountName: selectedAccount,
+                accountPorts,
+                accountUserDataDirs,
+                cdpCallTimeout: 15000,
+                maxReconnectAttempts: 0,
+            });
+
+            try {
+                await cdp.openWorkspace(workspacePath);
+            } finally {
+                await cdp.disconnect().catch(() => { });
+            }
+
+            bridge.selectedAccountByChannel?.set(channelId, selectedAccount);
+            bridge.pool.setPreferredAccountForWorkspace(workspacePath, selectedAccount);
+
+            await interaction.editReply({
+                content: t(`✅ Reopened **${projectName}** in account **${selectedAccount}**${port ? ` (CDP ${port})` : ''}.`),
+            });
+        } catch (error: any) {
+            logger.error('[ProjectReopenCommand:Discord] Failed to reopen workspace:', error);
+            await interaction.editReply({
+                content: t(`❌ Failed to reopen project in account **${selectedAccount}**: ${error?.message || String(error)}`),
+            });
+        }
+    }
+
+    /**
      * Get the bound project path from a channel ID
      */
     public getWorkspaceForChannel(channelId: string): string | undefined {

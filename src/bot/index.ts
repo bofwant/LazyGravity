@@ -2192,6 +2192,12 @@ export async function handleSlashInteraction(
 
                 await interaction.editReply({ content: `✅ Bound this project channel to account **${requested}**.` });
                 break;
+            } else if (wsSub === 'reopen') {
+                if (!interaction.guild) {
+                    await interaction.editReply({ content: 'This command can only be used in a server.' });
+                    break;
+                }
+                await wsHandler.handleReopen(interaction, interaction.guild, bridge, antigravityAccounts);
             } else {
                 // /project list or /project (default)
                 await wsHandler.handleShow(interaction);

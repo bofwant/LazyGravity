@@ -121,6 +121,11 @@ const projectCommand = new SlashCommandBuilder()
                     .setDescription(t('Name of the account to bind to this project channel'))
                     .setRequired(false)
             )
+    )
+    .addSubcommand((sub) =>
+        sub
+            .setName('reopen')
+            .setDescription(t('Reopen the bound project in the selected Antigravity account'))
     );
 
 /** /new command definition (formerly /chat new, made into a standalone command) */
